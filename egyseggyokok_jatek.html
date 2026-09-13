@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Egységgyökök Gyakorlása</title>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            background-color: #f4f7f6; 
+            margin: 0; 
+            padding: 20px; 
+        }
+        #game-container { 
+            background: white; 
+            padding: 20px 30px; 
+            border-radius: 16px; 
+            box-shadow: 0 8px 24px rgba(0,0,0,0.1); 
+            text-align: center; 
+            max-width: 600px; 
+            width: 100%; 
+            box-sizing: border-box;
+        }
+        .header { 
+            display: flex; 
+            justify-content: space-between; 
+            margin-bottom: 25px; 
+            font-size: 1.3em; 
+            font-weight: 600; 
+            color: #333;
+        }
+        #equation { 
+            font-size: 1.6em; 
+            margin-bottom: 25px; 
+            min-height: 50px; 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .math { font-family: 'Times New Roman', Times, serif; font-style: italic; }
+        .frac { display: inline-block; text-align: center; vertical-align: middle; margin: 0 2px; font-size: 0.8em; }
+        .frac > span { display: block; padding: 0.1em; }
+        .frac span.bottom { border-top: 1px solid black; }
+
+        svg { max-width: 100%; height: auto; touch-action: manipulation; }
+        .axis { stroke: #000; stroke-width: 4; }
+        .circle-path { fill: none; stroke: #000; stroke-width: 2.5; }
+        .spoke { stroke: #b0bec5; stroke-width: 1; }
+        .node { 
+            fill: #e0e0e0; 
+            stroke: #000; 
+            stroke-width: 2.5; 
+            cursor: pointer; 
+            transition: all 0.2s ease-in-out; 
+        }
+        .node:hover { fill: #cfd8dc; }
+        .node.selected { fill: #fdd835; stroke-width: 3.5; }
+        .node.correct-guess { fill: #4caf50; }
+        .node.missed-correct { fill: #f44336; stroke-width: 3.5; }
+        
+        #center-btn { cursor: pointer; }
+        #center-rect { 
+            fill: #f4f8fb; 
+            stroke: #000; 
+            stroke-width: 2.5; 
+            rx: 12; 
+            ry: 12; 
+            transition: fill 0.2s; 
+        }
+        #center-btn:hover:not(.disabled) #center-rect { fill: #e3f2fd; }
+        #center-btn.disabled { pointer-events: none; opacity: 0.4; }
+        #checkmark { 
+            fill: none; 
+            stroke: #2e7d32; 
+            stroke-width: 5; 
+            stroke-linecap: round; 
+            stroke-linejoin: round; 
+        }
+        
+        button.action-btn { 
+            padding: 12px 24px; 
+            font-size: 1.2em; 
+            border: none; 
+            border-radius: 8px; 
+            background-color: #1976D2; 
+            color: white; 
+            cursor: pointer; 
+            margin-top: 25px; 
+            font-weight: bold;
+            transition: background 0.3s, transform 0.1s; 
+        }
+        button.action-btn:hover:not(:disabled) { background-color: #1565C0; transform: scale(1.02); }
+        button.action-btn:disabled { background-color: #bbdefb; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div class="header">
+            <div>Idő: <span id="time" style="color: #d32f2f;">60</span> s</div>
+            <div>Helyes válaszok: <span id="score" style="color: #388e3c;">0</span></div>
+        </div>
+        
+        <div id="equation" class="math">Kattints a kezdésre a játékhoz!</div>
+        
+        <svg viewBox="0 0 500 500" width="500" height="500">
+            <rect width="500" height="500" fill="#ffffff" rx="20" />
+            
+            <g transform="translate(250, 250)">
+                <circle cx="0" cy="0" r="180" class="circle-path" />
+                
+                <line x1="-210" y1="0" x2="210" y2="0" class="axis" />
+                <line x1="0" y1="-210" x2="0" y2="210" class="axis" />
+                
+                <g id="spokes"></g>
+                <g id="nodes"></g>
+                
+                <g id="center-btn" class="disabled" onclick="handleCenterClick()">
+                    <rect id="center-rect" x="-30" y="-30" width="60" height="60" />
+                    <path id="checkmark" d="M -14 2 L -5 12 L 16 -12" />
+                </g>
+            </g>
+        </svg>
+        
+        <button id="start-btn" class="action-btn" onclick="startGame()">Kezdés</button>
+    </div>
+
+    <script>
+        const anglesDeg = [0, 30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330];
+        
+        // HTML formázás a törtekhez és szögekhez
+        const radStrings = [
+            "0", 
+            "<div class='frac'><span>π</span><span class='bottom'>6</span></div>", 
+            "<div class='frac'><span>π</span><span class='bottom'>4</span></div>", 
+            "<div class='frac'><span>π</span><span class='bottom'>3</span></div>", 
+            "<div class='frac'><span>π</span><span class='bottom'>2</span></div>", 
+            "<div class='frac'><span>2π</span><span class='bottom'>3</span></div>", 
+            "<div class='frac'><span>3π</span><span class='bottom'>4</span></div>", 
+            "<div class='frac'><span>5π</span><span class='bottom'>6</span></div>", 
+            "π", 
+            "<div class='frac'><span>7π</span><span class='bottom'>6</span></div>", 
+            "<div class='frac'><span>5π</span><span class='bottom'>4</span></div>", 
+            "<div class='frac'><span>4π</span><span class='bottom'>3</span></div>", 
+            "<div class='frac'><span>3π</span><span class='bottom'>2</span></div>", 
+            "<div class='frac'><span>5π</span><span class='bottom'>3</span></div>", 
+            "<div class='frac'><span>7π</span><span class='bottom'>4</span></div>", 
+            "<div class='frac'><span>11π</span><span class='bottom'>6</span></div>"
+        ];
+        
+        let state = 'idle'; // idle, playing, evaluating
+        let score = 0;
+        let timeLeft = 60;
+        let timerInterval = null;
+        let targetIndex = -1;
+        let selectedIndex = -1;
+        
+        const nodesGroup = document.getElementById('nodes');
+        const spokesGroup = document.getElementById('spokes');
+        const timeEl = document.getElementById('time');
+        const scoreEl = document.getElementById('score');
+        const eqEl = document.getElementById('equation');
+        const startBtn = document.getElementById('start-btn');
+        const centerBtn = document.getElementById('center-btn');
+        const nodes = [];
+        
+        // 16 pont és vonal (küllők) generálása
+        anglesDeg.forEach((angle, index) => {
+            const rad = angle * Math.PI / 180;
+            // Y koordinátát negálni kell, mert SVG-ben lefelé nő az Y
+            const x = 180 * Math.cos(rad);
+            const y = -180 * Math.sin(rad);
+            
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("x1", 0);
+            line.setAttribute("y1", 0);
+            line.setAttribute("x2", x);
+            line.setAttribute("y2", y);
+            line.setAttribute("class", "spoke");
+            spokesGroup.appendChild(line);
+            
+            const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            circle.setAttribute("cx", x);
+            circle.setAttribute("cy", y);
+            circle.setAttribute("r", 16);
+            circle.setAttribute("class", "node");
+            circle.onclick = () => selectNode(index);
+            nodesGroup.appendChild(circle);
+            nodes.push(circle);
+        });
+        
+        function formatEquation(index) {
+            const angleHtml = radStrings[index];
+            return `cos(${angleHtml}) + i·sin(${angleHtml})`;
+        }
+        
+        function startGame() {
+            score = 0;
+            timeLeft = 60;
+            scoreEl.innerText = score;
+            timeEl.innerText = timeLeft;
+            startBtn.style.display = "none"; 
+            
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                timeEl.innerText = timeLeft;
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+            
+            nextQuestion();
+        }
+        
+        function nextQuestion() {
+            state = 'playing';
+            targetIndex = Math.floor(Math.random() * anglesDeg.length);
+            eqEl.innerHTML = formatEquation(targetIndex);
+            
+            selectedIndex = -1;
+            centerBtn.classList.add('disabled');
+            resetNodeStyles();
+        }
+        
+        function selectNode(index) {
+            if (state !== 'playing') return;
+            selectedIndex = index;
+            resetNodeStyles();
+            nodes[index].classList.add('selected');
+            centerBtn.classList.remove('disabled');
+        }
+        
+        function resetNodeStyles() {
+            nodes.forEach(n => {
+                n.classList.remove('selected', 'correct-guess', 'missed-correct');
+            });
+        }
+        
+        function handleCenterClick() {
+            if (state === 'playing' && selectedIndex !== -1) {
+                // Ellenőrzés
+                if (selectedIndex === targetIndex) {
+                    nodes[selectedIndex].classList.remove('selected');
+                    nodes[selectedIndex].classList.add('correct-guess');
+                    score++;
+                    scoreEl.innerText = score;
+                } else {
+                    nodes[selectedIndex].classList.remove('selected');
+                    // Ha rossz a válasz, a helyes pont pirosan világít
+                    nodes[targetIndex].classList.add('missed-correct');
+                }
+                state = 'evaluating';
+            } else if (state === 'evaluating') {
+                // Tovább a következő kérdésre
+                nextQuestion();
+            }
+        }
+        
+        function endGame() {
+            clearInterval(timerInterval);
+            state = 'idle';
+            eqEl.innerHTML = `Vége! Helyes válaszok: ${score}`;
+            startBtn.style.display = "block";
+            startBtn.innerText = "Újra";
+            resetNodeStyles();
+            centerBtn.classList.add('disabled');
+        }
+    </script>
+</body>
+</html>
